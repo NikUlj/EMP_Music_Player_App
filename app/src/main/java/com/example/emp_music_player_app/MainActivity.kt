@@ -1,14 +1,22 @@
 package com.example.emp_music_player_app
 
-import android.content.ContentResolver
-import android.net.Uri
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
-import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import android.content.ContentUris
+import android.net.Uri
+import android.provider.MediaStore
+import android.util.Log
+import androidx.activity.viewModels
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,13 +25,21 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material3.Card
+import androidx.compose.material3.Divider
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -31,73 +47,220 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import com.example.emp_music_player_app.ui.theme.EMP_Music_Player_AppTheme
 
 class MainActivity : ComponentActivity() {
+    private val viewModel: MusicPlayerViewModel by viewModels()
+
+    private val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        arrayOf(Manifest.permission.READ_MEDIA_AUDIO)
+    } else {
+        arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+    }
+
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { perms ->
+        if (perms.all { it.value }) {
+            loadMusic()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            MusicPlayerUI()
+        checkAndRequestPermissions()
+    }
+
+    private fun checkAndRequestPermissions() {
+        if (hasPermissions()) {
+            loadMusic()
+        } else {
+            permissionLauncher.launch(requiredPermissions)
         }
+    }
+
+    private fun hasPermissions(): Boolean {
+        val ok = requiredPermissions.all {
+            val granted = ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+            Log.d("MusicPlayer", "Permission $it granted: $granted")
+            granted
+        }
+        Log.d("MusicPlayer", "Permissions granted: $ok")
+        return ok
+    }
+
+    private fun loadMusic() {
+        Log.d("MusicPlayer", "Loading music...")
+        val songs = getMusicFiles()
+        Log.d("MusicPlayer", "Found ${songs.size} songs")
+        viewModel.loadSongs(songs)
+        setContent {
+            EMP_Music_Player_AppTheme {
+                MusicPlayerUI(viewModel)
+//                ArtistSelectScreen(
+//                    viewModel,
+//                    onArtistSelected = {Unit}
+//                )
+            }
+        }
+    }
+
+    private fun getMusicFiles(): List<Song> {
+        val contentResolver = this.contentResolver
+        val songs = mutableListOf<Song>()
+
+//        try {
+//            val intent = Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE)
+//            intent.data = Uri.parse("file:///storage/emulated/0/Music/")
+//            context.sendBroadcast(intent)
+//            Thread.sleep(1000)
+//        } catch (e: Exception) {
+//            Log.e("MusicPlayer", "Error scanning media: ${e.message}")
+//        }
+
+        val cols = arrayOf(
+            MediaStore.Audio.Media._ID,
+            MediaStore.Audio.Media.DISPLAY_NAME,
+            MediaStore.Audio.Media.ARTIST,
+            MediaStore.Audio.Media.ALBUM,
+            MediaStore.Audio.Media.DURATION,
+            MediaStore.Audio.Media.DATA,
+            MediaStore.Audio.Media.MIME_TYPE
+        )
+
+        try {
+            Log.d("MusicPlayer", "Starting music query...")
+
+            val cursor = contentResolver.query(
+                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                cols,
+                null,
+                null,
+                "${MediaStore.Audio.Media.DISPLAY_NAME} ASC"
+            )
+
+            Log.d("MusicPlayer", "Cursor obtained. Count: ${cursor?.count ?: 0}")
+
+            cursor?.use { c ->
+                val idCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
+                val nameCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME)
+                val artistCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
+                val albumCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
+                val durationCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
+                val dataCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
+                val mimeCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
+
+                while (c.moveToNext()) {
+                    try {
+                        val id = c.getLong(idCol)
+                        val name = c.getString(nameCol).substringBeforeLast(".")
+                        val artist = c.getString(artistCol) ?: "Unknown Artist"
+                        val album = c.getString(albumCol) ?: "Unknown Album"
+                        val duration = c.getLong(durationCol)
+                        val path = c.getString(dataCol)
+                        val mime = c.getString(mimeCol)
+
+                        Log.d("MusicPlayer", """
+                        Found audio file:
+                        - ID: $id
+                        - Name: $name
+                        - Path: $path
+                        - Artist: $artist
+                        - Album: $album
+                        - MIME Type: $mime
+                        - Duration: $duration
+                    """.trimIndent())
+
+                        val uri = ContentUris.withAppendedId(
+                            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                            id
+                        )
+
+                        songs.add(
+                            Song(
+                                id = id,
+                                title = name,
+                                artist = artist,
+                                album = album,
+                                duration = duration,
+                                uri = uri
+                            )
+                        )
+                    } catch (e: Exception) {
+                        Log.e("MusicPlayer", "Error processing song entry: ${e.message}")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("MusicPlayer", "Error querying music files: ${e.message}")
+            e.printStackTrace()
+        }
+
+        Log.d("MusicPlayer", "Final song list size: ${songs.size}")
+        return songs
     }
 }
 
-@Preview(showBackground = true)
 @Composable
-fun MusicPlayerUI() {
-    var songIndex by remember { mutableIntStateOf(0) }
-    val songList = listOf(
-        Song("Song title", "Artist", R.drawable.ic_album_placeholder)
-    )
-    val currentSong = songList[songIndex]
-
-    var isPlaying by remember { mutableStateOf(false) }
+fun MusicPlayerUI(viewModel: MusicPlayerViewModel) {
+    val songIndex by viewModel.songIndex
+    val isPlaying by viewModel.isPlaying
+    val songs by viewModel.songs
+    val context = LocalContext.current
 
     Column(
         modifier = Modifier
-
             .fillMaxSize()
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        if (currentSong.albumArtId != null) {
-            Image(
-                painter = painterResource(id = currentSong.albumArtId),
-                contentDescription = "Album art",
-                modifier = Modifier
-                    .size(200.dp)
-                    .padding(8.dp)
-            )
-        }
-        Text(
-            text = songList[songIndex].title,
-            style = MaterialTheme.typography.displaySmall,
+        Image(
+            painter = painterResource(id = R.drawable.ic_album_placeholder),
+            contentDescription = "Album art",
             modifier = Modifier
-                .padding(top = 16.dp)
+                .size(200.dp)
+                .padding(8.dp)
         )
         Text(
-            text = songList[songIndex].artist,
-            style = MaterialTheme.typography.titleLarge
+            text = songs[songIndex].title,
+            style = MaterialTheme.typography.displaySmall,
+            maxLines = 1,
+            overflow = TextOverflow.Clip,
+            softWrap = false,
+            modifier = Modifier.padding(top = 16.dp)
         )
+        Text(
+            text = songs[songIndex].artist,
+            style = MaterialTheme.typography.titleLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Clip,
+            softWrap = false
+        )
+
         Spacer(modifier = Modifier.height(20.dp))
+
         Row(
             horizontalArrangement = Arrangement.Center,
             modifier = Modifier.fillMaxWidth()
         ) {
             IconButton(onClick = {
-                    songIndex = (songIndex - 1 + songList.size) % songList.size
-                }
-            ) {
+                viewModel.stopMusic()
+                viewModel.previousSong()
+                viewModel.switchMusic(context, songs[songIndex].uri)
+                if (isPlaying) viewModel.playMusic(context, songs[songIndex].uri)
+            }) {
                 Icon(
                     imageVector = Icons.Filled.SkipPrevious,
                     contentDescription = "Previous song button",
@@ -105,18 +268,26 @@ fun MusicPlayerUI() {
                 )
             }
             IconButton(onClick = {
-                isPlaying = !isPlaying
+                if (isPlaying) {
+                    viewModel.pauseMusic()
+                } else {
+                    viewModel.playMusic(context, songs[songIndex].uri)
+                }
+                viewModel.toggleIsPlaying()
             }) {
                 Icon(
                     imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = if (isPlaying) "Pause button" else "Play button",
+                    contentDescription = "Pause/Play button",
                     Modifier.size(50.dp)
                 )
             }
-            IconButton(onClick = {
-                songIndex = (songIndex + 1) % songList.size
-            }
-            ) {
+            IconButton(
+                onClick = {
+                    viewModel.stopMusic()
+                    viewModel.nextSong()
+                    viewModel.switchMusic(context, songs[songIndex].uri)
+                    if (isPlaying) viewModel.playMusic(context, songs[songIndex].uri)
+                }) {
                 Icon(
                     imageVector = Icons.Filled.SkipNext,
                     contentDescription = "Next song button",
@@ -127,66 +298,88 @@ fun MusicPlayerUI() {
     }
 }
 
-//fun getMusicFiles(contentResolver: ContentResolver): List<Song> {
-//    val songList = mutableListOf<Song>()
-//
-//    val projection = arrayOf(
-//        MediaStore.Audio.Media._ID,
-//        MediaStore.Audio.Media.DISPLAY_NAME,
-//        MediaStore.Audio.Media.ARTIST,
-//        MediaStore.Audio.Media.ALBUM,
-//        MediaStore.Audio.Media.DURATION
-//    )
-//
-//    val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
-//
-//    val cursor = contentResolver.query(
-//        MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
-//        projection,
-//        selection,
-//        null,
-//        MediaStore.Audio.Media.DISPLAY_NAME
-//    )
-//
-//    cursor?.use {
-//        val idColumn = it.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
-//        val nameColumn = it.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME)
-//        val artistColumn = it.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
-//        val albumColumn = it.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
-//        val durationColumn = it.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
-//
-//        while (it.moveToNext()) {
-//            val id = it.getLong(idColumn)
-//            val name = it.getString(nameColumn)
-//            val artist = it.getString(artistColumn)
-//            val album = it.getString(albumColumn)
-//            val duration = it.getLong(durationColumn)
-//
-//            val contentUri: Uri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI.buildUpon()
-//                .appendPath(id.toString())
-//                .build()
-//
-//            songList.add(
-//                Song(
-//                    id = id,
-//                    title = name,
-//                    artist = artist,
-//                    album = album,
-//                    duration = duration,
-//                    uri = contentUri,
-//                    albumArtId = null
-//                )
-//            )
-//        }
-//    }
-//}
+@Composable
+fun ArtistSelectScreen(
+    viewModel: MusicPlayerViewModel,
+    onArtistSelected: (String) -> Unit
+) {
+//    val artists = viewModel.getArtists()
+    val artists = listOf(
+        "Daft Punk",
+        "Adele",
+        "Taylor Swift",
+        "Ed Sheeran",
+        "Drake",
+        "Billie Eilish",
+        "The Weeknd",
+        "Kendrick Lamar",
+        "Post Malone",
+        "Kanye West",
+        "Rihanna",
+        "Coldplay",
+        "Beyoncé"
+    )
+
+    Scaffold { padding ->
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(150.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            items(artists) { artist ->
+                ArtistCard(
+                    artistName = artist,
+                    onClick = { onArtistSelected(artist) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ArtistCard(
+    artistName: String,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .padding(8.dp)
+            .clickable { onClick() }
+            .size(150.dp)
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.ic_album_placeholder),
+                contentDescription = "Artist Image",
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(8.dp)),
+                contentScale = ContentScale.Crop
+            )
+
+            Text(
+                text = artistName,
+                style = MaterialTheme.typography.bodyLarge.copy(color = Color.White),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(8.dp)
+                    .background(Color.Transparent)
+            )
+        }
+    }
+}
 
 data class Song(
-//    val id: Long,
+    val id: Long,
     val title: String,
     val artist: String,
-//    val album: String,
-//    val duration: Long,
-//    val uri: Uri,
-    val albumArtId: Int?
+    val album: String,
+    val duration: Long,
+    val uri: Uri
 )
