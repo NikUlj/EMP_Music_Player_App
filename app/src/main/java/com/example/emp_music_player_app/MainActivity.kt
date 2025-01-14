@@ -58,6 +58,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import com.example.emp_music_player_app.data.Song
 import com.example.emp_music_player_app.ui.theme.EMP_Music_Player_AppTheme
 
 class MainActivity : ComponentActivity() {
@@ -374,12 +375,3 @@ fun ArtistCard(
         }
     }
 }
-
-data class Song(
-    val id: Long,
-    val title: String,
-    val artist: String,
-    val album: String,
-    val duration: Long,
-    val uri: Uri
-)
