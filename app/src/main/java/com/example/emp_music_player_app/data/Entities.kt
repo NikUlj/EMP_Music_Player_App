@@ -39,10 +39,19 @@ data class Album(
     ]
 )
 data class Song(
-    val id: Long,
+    @PrimaryKey(autoGenerate = true) val songId: Long = 0,
     val title: String,
-    val artist: String,
-    val album: String,
     val duration: Long,
-    val uri: Uri
+    val uri: String,
+    val albumId: Long
 )
+
+
+//data class Song(
+//    val id: Long,
+//    val title: String,
+//    val artist: String,
+//    val album: String,
+//    val duration: Long,
+//    val uri: Uri
+//)
