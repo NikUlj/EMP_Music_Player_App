@@ -1,14 +1,14 @@
-package com.example.emp_music_player_app.data
+package com.example.emp_music_player_app.data.database
 
-import android.net.Uri
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.PrimaryKey
 
 @Entity
 data class Artist(
-    @PrimaryKey(autoGenerate = true) val artist: Long = 0,
-    val name: String
+    @PrimaryKey(autoGenerate = true) val artistId: Long = 0,
+    val name: String,
+    val imagePath: String? = null
 )
 
 @Entity(
@@ -24,7 +24,8 @@ data class Artist(
 data class Album(
     @PrimaryKey(autoGenerate = true) val albumId: Long = 0,
     val name: String,
-    val artistId: Long
+    val artistId: Long,
+    val imagePath: String? = null
 )
 
 

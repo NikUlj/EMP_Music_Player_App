@@ -1,4 +1,4 @@
-package com.example.emp_music_player_app.data
+package com.example.emp_music_player_app.data.database
 
 import android.content.Context
 import androidx.room.Database
