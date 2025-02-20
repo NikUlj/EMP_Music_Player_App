@@ -5,5 +5,4 @@
 ## ✨ Features  
 - 🎤 **Artist Selection**: Browse and select artists from your music library.  
 - 🎶 **Smooth Playback**: Play, pause, and switch between tracks with ease.  
-- 📖 **Lyrics Display**: View the lyrics of the song you're listening to for an enhanced experience.  
-- 🌐 **Dynamic Content**: The app uses an API to fetch song lyrics, album art, and artist pictures, providing a richer and smoother experience.
+- 🌐 **Dynamic Content**: The app uses an API to fetch album art and artist pictures, providing a richer and smoother experience.
